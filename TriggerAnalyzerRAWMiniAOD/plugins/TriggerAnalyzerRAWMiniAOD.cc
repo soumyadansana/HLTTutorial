@@ -60,6 +60,8 @@
 // This will improve performance in multithreaded jobs.
 
 class TriggerAnalyzerRAWMiniAOD : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
+   
+   typedef math::XYZTLorentzVectorF LorentzVector;
    public:
       explicit TriggerAnalyzerRAWMiniAOD(const edm::ParameterSet&);
       ~TriggerAnalyzerRAWMiniAOD();
@@ -71,10 +73,13 @@ class TriggerAnalyzerRAWMiniAOD : public edm::one::EDAnalyzer<edm::one::SharedRe
       virtual void beginJob() override;
       virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
       virtual void endJob() override;
-  bool PassOfflineMuonSelection(const pat::Muon *mu, reco::Vertex::Point PV);
-  bool PassOfflineElectronSelection(const pat::Electron * ele, reco::Vertex::Point PV);
-  bool RecoHLTMatching(const edm::Event&,double recoeta, double recophi, std::string filtername, double dRmatching = 0.3);
-  double VarStudied( const edm::Event& iEvent, double recoeta, double recophi,edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > varToken_,  edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> candToken_,   bool  dividebyE, bool dividebyEt, double dRmatching =0.3);
+      bool PassOfflineMuonSelection(const pat::Muon *mu, reco::Vertex::Point PV);
+      bool PassOfflineElectronSelection(const pat::Electron * ele, reco::Vertex::Point PV);
+      bool RecoHLTMatching(const edm::Event&,double recoeta, double recophi, std::string filtername, double dRmatching = 0.3);
+
+      void bookHists(edm::Service<TFileService>& fs, const std::string& suffix);
+      void fillHists(const LorentzVector& lv, const std::string& suffix);
+  //double VarStudied( const edm::Event& iEvent, double recoeta, double recophi,edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > varToken_,  edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> candToken_,   bool  dividebyE, bool dividebyEt, double dRmatching =0.3);
 
       // ----------member data ---------------------------
 
@@ -92,13 +97,16 @@ class TriggerAnalyzerRAWMiniAOD : public edm::one::EDAnalyzer<edm::one::SharedRe
   edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> et_Filter_Token_;
   edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> showershape_Filter_Token_;
   edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> dphi_Filter_Token_;
+  
+  bool verbose_;
 
-  edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > showershape_Var_Token_;
-  edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > hovere_Var_Token_;
-  edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > trackiso_Var_Token_;
+  //edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > showershape_Var_Token_;
+  //edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > hovere_Var_Token_;
+  //edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > trackiso_Var_Token_;
 
   edm::Service<TFileService> fs;
   
+  //Below needs to be modded
   TH1F* h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_den;
   TH1F* h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_num;
   TH1F* h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_numl1;
@@ -113,6 +121,34 @@ class TriggerAnalyzerRAWMiniAOD : public edm::one::EDAnalyzer<edm::one::SharedRe
   TH1F* h_sietaieta_HLT;
   TH1F* h_hoe_HLT;
   TH1F* h_trackiso_HLT;
+  
+  std::map<std::string,TH1F*> hists_1d_;
+  template<class C>
+    struct IndexSorter
+    {
+        IndexSorter(const C& values, bool decreasing = true)
+            : values_(values), decrease_(decreasing)
+        {
+        }
+        std::vector<size_t> operator()() const
+        {
+            std::vector<size_t> result;
+            result.reserve(values_.size());
+            for (size_t i = 0; i < values_.size(); ++i)
+                result.emplace_back(i);
+            sort(result.begin(), result.end(), *this);
+            return result;
+        }
+        bool operator()(int a, int b)
+        {
+            if (decrease_)
+                return values_[a] > values_[b];
+            else
+                return values_[a] < values_[b];
+        }
+        const C& values_;
+        bool decrease_;
+    };
 };
 
 //
@@ -136,11 +172,11 @@ TriggerAnalyzerRAWMiniAOD::TriggerAnalyzerRAWMiniAOD(const edm::ParameterSet& iC
   trgresultsHLT2Token_= consumes<edm::TriggerResults>( edm::InputTag("TriggerResults::HLT2") );
 
 
-  showershape_Var_Token_  = consumes<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > ( edm::InputTag("hltEgammaClusterShape","sigmaIEtaIEta5x5","HLT2") );
-  hovere_Var_Token_  = consumes<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > ( edm::InputTag("hltEgammaHoverE","","HLT2") );
-  trackiso_Var_Token_  = consumes<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > ( edm::InputTag("hltEgammaEleGsfTrackIso","","HLT2")  );
+  //showershape_Var_Token_  = consumes<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > ( edm::InputTag("hltEgammaClusterShape","sigmaIEtaIEta5x5","HLT2") );
+  //hovere_Var_Token_  = consumes<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > ( edm::InputTag("hltEgammaHoverE","","HLT2") );
+  //trackiso_Var_Token_  = consumes<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > ( edm::InputTag("hltEgammaEleGsfTrackIso","","HLT2")  );
 
-  et_Filter_Token_ = consumes<trigger::TriggerFilterObjectWithRefs> ( edm::InputTag("hltEG35L1SingleEGOrEtFilter","","HLT2") ) ;
+  //et_Filter_Token_ = consumes<trigger::TriggerFilterObjectWithRefs> ( edm::InputTag("hltEG35L1SingleEGOrEtFilter","","HLT2") ) ;
   showershape_Filter_Token_ = consumes<trigger::TriggerFilterObjectWithRefs> ( edm::InputTag("hltEle35noerWPTightClusterShapeFilter","","HLT2") );
   dphi_Filter_Token_ = consumes<trigger::TriggerFilterObjectWithRefs> ( edm::InputTag("hltEle35noerWPTightGsfDphiFilter","","HLT2") );
   
@@ -150,10 +186,28 @@ TriggerAnalyzerRAWMiniAOD::TriggerAnalyzerRAWMiniAOD(const edm::ParameterSet& iC
   electron_token = consumes<std::vector<pat::Electron> >(edm::InputTag("slimmedElectrons") );
   PV_token = consumes<std::vector<reco::Vertex> > (edm::InputTag("offlineSlimmedPrimaryVertices"));
   
+  
+  /*tagPt_ = ps.getUntrackedParameter<double>("tagPt",10.);
+  tagEta_ = ps.getUntrackedParameter<double>("tagEta",2.4);
+  probePt_ = ps.getUntrackedParameter<double>("probePt",5.);
+  probeEta_ = ps.getUntrackedParameter<double>("probeEta",2.4);*/
+  verbose_ = iConfig.getUntrackedParameter<bool>("verbose",false);
+  
 
   //now do what ever initialization is needed
   //   usesResource("TFileService");
-
+  // histogram setup
+  edm::Service<TFileService> fs;
+  hists_1d_["h_passtrig"] = fs->make<TH1F>("h_passtrig" , "; passed trigger" , 2 , 0. , 2. );
+  //hists_1d_["h_mll_allpairs"] = fs->make<TH1F>("h_mll_allpairs" , "; m_{ll} [GeV]" , 75 , 0. , 150. );
+  //hists_1d_["h_mll_cut"] = fs->make<TH1F>("h_mll_cut" , "; m_{ll} [GeV]" , 75 , 0. , 150. );
+  bookHists(fs,"probe_all");
+  bookHists(fs,"probe_pass");
+  bookHists(fs,"probe_fail");
+  bookHists(fs,"tag_all");
+  bookHists(fs,"tag_pass");
+  bookHists(fs,"tag_fail");
+  //below needs to be modded
   h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_den= fs->make<TH1F>("h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_den","",50,0,500);
   h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_num= fs->make<TH1F>("h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_num","",50,0,500);
   h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_numl1= fs->make<TH1F>("h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_numl1","",50,0,500);
@@ -197,10 +251,9 @@ TriggerAnalyzerRAWMiniAOD::analyze(const edm::Event& iEvent, const edm::EventSet
    using namespace std;
 
 
-
    // ****************Part 1. Accessing some trigger information ************* 
-   bool passHLT_IsoMu24(false);
-   bool passHLT_Mu3_PFJet200DeepCSV_1p59(false), passHLT_Mu3_L1SingleJet180(false), passHLT_PFJet200DeepCSV_1p59(false);   
+   bool passHLT2_DoubleL2Mu23NoVtx_2Cha(false), passHLT2_DoubleL2Mu23NoVtx_2Cha_CosmicSeed(false), passHLT2_DoubleL2Mu10NoVtx_2Cha_PromptL3Mu0Veto(false), passHLT2_DoubleL3Mu16_10NoVtx_Displaced(false);  
+   bool passHLT_DoubleL2Mu23NoVtx_2Cha(false), passHLT_DoubleL2Mu23NoVtx_2Cha_CosmicSeed(false);
 
    //Accessing trigger bits:
    //This works in both RAW, AOD or MINIAOD 
@@ -213,56 +266,165 @@ TriggerAnalyzerRAWMiniAOD::analyze(const edm::Event& iEvent, const edm::EventSet
 
      for( int i_Trig = 0; i_Trig < N_Triggers; ++i_Trig ) {
        if (trigResults.product()->accept(i_Trig)) {
-	 TString TrigPath =trigName.triggerName(i_Trig);
-	 //	 cout << "Passed path: " << TrigPath<<endl;
-	 if(TrigPath.Index("HLT_IsoMu24_v") >=0) passHLT_IsoMu24=true; 
-	 //Notice the special syntax: since the path version can change during data taking one only looks for the string "HLT_IsoMu24_v"
+	       TString TrigPath =trigName.triggerName(i_Trig);
+	       //	 cout << "Passed path: " << TrigPath<<endl;
+	       if(TrigPath.Index("HLT_DoubleL2Mu23NoVtx_2Cha_v") >=0) passHLT_DoubleL2Mu23NoVtx_2Cha=true; 
+	       if(TrigPath.Index("HLT_DoubleL2Mu23NoVtx_2Cha_CosmicSeed_v") >=0) passHLT_DoubleL2Mu23NoVtx_2Cha_CosmicSeed=true; 
+	       //Notice the special syntax: since the path version can change during data taking one only looks for the string "HLT_IsoMu24_v"
        }
      }
    }
    //Exercise 1: 
    //Clone and *then* modify the code above in order to save the decision of your customized HLT menu in the booleans passHLT_Mu3_PFJet200DeepCSV_1p59, passHLT_Mu3_L1SingleJet180, passHLT_PFJet200DeepCSV_1p59
    //Do not directly edit the code above as you will also need the use the original HLT_IsoMu24 decision later on.
-
    
+   //edm::Handle<edm::TriggerResults> trigResults;
+   iEvent.getByToken(trgresultsHLT2Token_, trigResults);
+   if( !trigResults.failedToGet() ) {
+     int N_Triggers = trigResults->size();
+     const edm::TriggerNames & trigName = iEvent.triggerNames(*trigResults);
 
-
-
-   //Accessing the trigger objects in MINIAOD
-   //This recipe works for MINIAOD only
-   edm::Handle<pat::TriggerObjectStandAloneCollection> triggerObjects;
-   iEvent.getByToken(trigobjectsMINIAODToken_, triggerObjects);
-
-   const edm::TriggerNames &names = iEvent.triggerNames(*trigResults);
-   for (pat::TriggerObjectStandAlone obj : *triggerObjects) {
-     obj.unpackFilterLabels(iEvent,*trigResults);
-     obj.unpackPathNames(names);
-     for (unsigned h = 0; h < obj.filterLabels().size(); ++h){
-       string myfillabl=obj.filterLabels()[h];
-       //cout << "Trigger object name, pt, eta, phi: "
-       //	    << myfillabl<<", " << obj.pt()<<", "<<obj.eta()<<", "<<obj.phi() << endl;
+     for( int i_Trig = 0; i_Trig < N_Triggers; ++i_Trig ) {
+       if (trigResults.product()->accept(i_Trig)) {
+	       TString TrigPath =trigName.triggerName(i_Trig);
+	       //cout << "Passed path in HLT2: " << TrigPath<<endl;
+	       if(TrigPath.Index("HLT_DoubleL2Mu23NoVtx_2Cha_v") >=0) passHLT2_DoubleL2Mu23NoVtx_2Cha=true; 
+	       if(TrigPath.Index("HLT_DoubleL2Mu23NoVtx_2Cha_CosmicSeed_v") >=0) passHLT2_DoubleL2Mu23NoVtx_2Cha_CosmicSeed=true; 
+	       if(TrigPath.Index("HLT_DoubleL2Mu10NoVtx_2Cha_PromptL3Mu0Veto_v") >=0) passHLT2_DoubleL2Mu10NoVtx_2Cha_PromptL3Mu0Veto=true; 
+	       if(TrigPath.Index("HLT_DoubleL3Mu16_10NoVtx_Displaced_v") >=0) passHLT2_DoubleL3Mu16_10NoVtx_Displaced=true; 
+	       //Notice the special syntax: since the path version can change during data taking one only looks for the string "HLT_IsoMu24_v"
+       }
      }
    }
+   if (passHLT2_DoubleL3Mu16_10NoVtx_Displaced) hists_1d_["h_passtrig"]->Fill(1);
+   else hists_1d_["h_passtrig"]->Fill(0);
 
    //Exercise 2: uncomment the lines above to print all the trigger objects and their corresponding pt, eta, phi. 
    
-
+   std::vector<TLorentzVector> trigMuons;
+   TLorentzVector trigMuon;
+  //std::vector<double>MuonPts;
    //Accessing the trigger objects in RAW/AOD
-   //Printing here all trigger objects corresponding to the filter hltL3MuFiltered3
+   //Printing here all trigger objects corresponding to the filter hltL2DoubleMu23NoVertexL2Filtered2Cha
    edm::Handle<trigger::TriggerEvent> triggerObjectsSummary;
    iEvent.getByToken(trigobjectsRAWToken_ ,triggerObjectsSummary);
    trigger::TriggerObjectCollection selectedObjects;
    if (triggerObjectsSummary.isValid()) {
-     size_t filterIndex = (*triggerObjectsSummary).filterIndex( edm::InputTag("hltL3MuFiltered3","","HLT2") );
+     size_t filterIndex = (*triggerObjectsSummary).filterIndex( edm::InputTag("hltL3fL1DoubleMuf0L2NVf15f7L3SingleMuNVf16Displaced","","HLT2") );
      trigger::TriggerObjectCollection allTriggerObjects = triggerObjectsSummary->getObjects();
      if (filterIndex < (*triggerObjectsSummary).sizeFilters()) { 
        const trigger::Keys &keys = (*triggerObjectsSummary).filterKeys(filterIndex);
        for (size_t j = 0; j < keys.size(); j++) {
-	 //trigger::TriggerObject foundObject = (allTriggerObjects)[keys[j]];
-	 //cout <<"object found, printing pt, eta, phi: " <<foundObject.pt()<<", "<<foundObject.eta()<<", "<< foundObject.phi() <<endl;
+	      trigger::TriggerObject foundObject = (allTriggerObjects)[keys[j]];
+	      //if (foundObject.id()!=83) continue; //The trigger muon type id is 83
+	      cout <<"object found, printing pt, eta, phi: " <<foundObject.pt()<<", "<<foundObject.eta()<<", "<< foundObject.phi() <<endl;
+	      trigMuon.SetPtEtaPhiE(foundObject.pt(),foundObject.eta(),foundObject.phi(),foundObject.energy());
+	      trigMuons.push_back(trigMuon);
+	      //MuonPts.push_back(foundObject.pt());
        }
      }
    }
+  
+  double dr_trigmatch = 0.05;
+  //Offline muons 
+  std::vector<double>MuonPts;
+  std::vector<LorentzVector> PATMuons;
+  edm::Handle< std::vector<pat::Muon> > muons;
+  iEvent.getByToken(muon_token,muons);
+  for(std::vector<pat::Muon>::const_iterator muon = (*muons).begin(); muon != (*muons).end(); muon++ ) {
+    //if(!RecoHLTMatching(iEvent,muon_PAT->eta(),muon_PAT->phi(),"hltL3fL1DoubleMuf0L2NVf15f7L3SingleMuNVf16Displaced") ) continue;
+    double pt{muon->pt()};
+    LorentzVector mup4{muon->p4()};
+    MuonPts.emplace_back(pt);
+    PATMuons.emplace_back(mup4);
+  }
+  
+  std::vector<size_t> ptSortedIndex{IndexSorter<std::vector<double>>(MuonPts, true)()};
+  if (ptSortedIndex.size()<=1) return;  
+  LorentzVector leadingMu = PATMuons.at(ptSortedIndex.at(0));
+  LorentzVector subleadingMu = PATMuons.at(ptSortedIndex.at(1));
+  std::cout<<"Leading muon pT:"<<leadingMu.pt()<<", Subleading muon pT:"<<subleadingMu.pt()<<std::endl;
+  if ((fabs(leadingMu.eta())>2.4) || (fabs(subleadingMu.eta())>2.4)) return;
+  fillHists(leadingMu,"tag_all");
+  fillHists(subleadingMu,"probe_all");
+  
+  if (trigMuons.size()<2) return; //Since dimuon triggers, two objects should be present
+  
+  int flag=0;
+  for(std::vector<pat::Muon>::const_iterator muon = (*muons).begin(); muon != (*muons).end(); muon++ ) {
+    //if(!RecoHLTMatching(iEvent,muon_PAT->eta(),muon_PAT->phi(),"hltL3fL1DoubleMuf0L2NVf15f7L3SingleMuNVf16Displaced") ) continue;
+    for (TLorentzVector obj : trigMuons) {
+      if(deltaR(muon->eta(),muon->phi(),obj.Eta(),obj.Phi())>dr_trigmatch) continue;
+      cout <<"object matched, printing pt, eta, phi: " <<muon->pt()<<", "<<muon->eta()<<", "<< muon->phi() <<endl;
+      flag++;
+      //MatchedMuons.push_back(muon->p4());
+      //MatchedMuonPts.push_back(muon->pt());
+    }
+  }
+  
+  /*for (TLorentzVector obj : trigMuons) {
+      if(deltaR(leadingMu.eta(),leadingMu.phi(),obj.Eta(),obj.Phi())>dr_trigmatch) continue;
+      flag++;
+      cout <<"object matched, printing pt, eta, phi: " <<leadingMu.pt()<<", "<<leadingMu.eta()<<", "<< leadingMu.phi() <<endl;
+  }
+  for (TLorentzVector obj : trigMuons) {
+      if(deltaR(subleadingMu.eta(),subleadingMu.phi(),obj.Eta(),obj.Phi())>dr_trigmatch) continue;
+      flag++;
+      cout <<"object matched, printing pt, eta, phi: " <<subleadingMu.pt()<<", "<<subleadingMu.eta()<<", "<< subleadingMu.phi() <<endl;
+  }*/
+  if (flag < 2) {
+    fillHists(leadingMu,"tag_fail");
+    fillHists(subleadingMu,"probe_fail");
+  }
+  else {
+    fillHists(leadingMu,"tag_pass");
+    fillHists(subleadingMu,"probe_pass");
+  }
+  
+  /*
+  if (trigMuons.size()<2) return; //Since dimuon triggers, two objects should be present
+  //std::vector<size_t> ptSortedIndex{IndexSorter<std::vector<double>>(MuonPts, true)()};
+  //if (ptSortedIndex.size()<=1) return;  
+  double dr_trigmatch = 0.05;
+  //Offline muons 
+  std::vector<LorentzVector> MatchedMuons;//PAT collection
+  std::vector<double>MatchedMuonPts;
+  edm::Handle< std::vector<pat::Muon> > muons;
+  iEvent.getByToken(muon_token,muons);
+  for(std::vector<pat::Muon>::const_iterator muon = (*muons).begin(); muon != (*muons).end(); muon++ ) {
+    //if(!RecoHLTMatching(iEvent,muon_PAT->eta(),muon_PAT->phi(),"hltL3fL1DoubleMuf0L2NVf15f7L3SingleMuNVf16Displaced") ) continue;
+    for (TLorentzVector obj : trigMuons) {
+      if(deltaR(muon->eta(),muon->phi(),obj.Eta(),obj.Phi())>dr_trigmatch) continue;
+      cout <<"object matched, printing pt, eta, phi: " <<muon->pt()<<", "<<muon->eta()<<", "<< muon->phi() <<endl;
+      MatchedMuons.push_back(muon->p4());
+      MatchedMuonPts.push_back(muon->pt());
+    }
+  }
+  bool accept;
+  if (MatchedMuons<2) accept = false;
+  else accept = true;
+  std::vector<size_t> ptSortedIndex{IndexSorter<std::vector<double>>(MatchedMuonPts, true)()};
+  LorentzVector leadingMu = MatchedMuons.at(ptSortedIndex.at(0));
+  LorentzVector subleadingMu = MatchedMuons.at(ptSortedIndex.at(1));
+  std::cout<<"Leading muon pT:"<<leadingMu.pt()<<", Subleading muon pT:"<<subleadingMu.pt()<<std::endl;
+  if ((fabs(leadingMu.eta())>2.4) || (fabs(subleadingMu.eta())>2.4)) return;
+  fillHists(leadingMu,"tag_all");
+  fillHists(subleadingMu,"probe_all");
+  
+  
+  if (flag < 2) {
+    fillHists(leadingMu,"tag_fail");
+    fillHists(subleadingMu,"probe_fail");
+  }
+  else {
+    fillHists(leadingMu,"tag_pass");
+    fillHists(subleadingMu,"probe_pass");
+  }
+  
+  trigMuons.clear();
+  MuonPts.clear();
+  PATMuons.clear();
+   */
    
    //Exercise 3: uncomment the two lines above and modify the input tag to print all trigger objects corresponding to the last filter of the HLT_Mu3_PFJet200DeepCSV_1p59 path (btagged jet with pt>200 GeV)
 
@@ -273,61 +435,11 @@ TriggerAnalyzerRAWMiniAOD::analyze(const edm::Event& iEvent, const edm::EventSet
    //What you really want to do is to assess the trigger performances on top of an offline selection. 
     
    
-   //Offline jets
-   //Find the highest pt b jet (medium WP i.e. csv>0.8484 for b tagging) in the event.
-   //Find the highest csv of a jet with pt>250 GeV in the event.
-   //Count the nb of bjets with pt>200 GeV in the event
-   edm::Handle< std::vector<pat::Jet> > jets;
-   iEvent.getByToken(jet_token,jets );
-
-   double leadingbjetpt(-100), leadingbjeteta(-100),leadingbjetphi(-100); 
-   double highestcsv_jetpt250 =-1;
-   int nbjetspt200 = 0;
-   for( std::vector<pat::Jet>::const_iterator jet = (*jets).begin(); jet != (*jets).end(); jet++ ) {
-     double ptjet = jet->pt();
-     double etajet = jet->eta();
-     double phijet = jet->phi();
-     double csvjet = jet->bDiscriminator("pfDeepCSVJetTags:probb")+ jet->bDiscriminator("pfDeepCSVJetTags:probbb");//cf https://twiki.cern.ch/twiki/bin/viewauth/CMS/BtagRecommendation102X
-     //The next following lines just remove e/mu from (semi)leptonic ttbar. 
-     if( jet->muonEnergyFraction() >0.7)continue;
-     if( jet->electronEnergyFraction() >0.7)continue;
-     
-     if(abs( etajet)>2.4) continue; //Only consider jets in tracker acceptance since we want to do b tagging. 
-     if(csvjet>0.4184&& ptjet>leadingbjetpt) { leadingbjetpt = ptjet; leadingbjeteta =etajet; leadingbjetphi = phijet;} 
-     if(ptjet>250&& csvjet>highestcsv_jetpt250) { highestcsv_jetpt250 = csvjet;} 
-     if(csvjet>0.4184&& ptjet>200) { nbjetspt200++; } 
-   }
-
-   
-   //Offline muons 
-   edm::Handle< std::vector<pat::Muon> > muons;
-   iEvent.getByToken(muon_token,muons );
-   //We also need the vertices here
-   edm::Handle<std::vector<Vertex> > theVertices;
-   iEvent.getByToken(PV_token,theVertices) ;
-   int nvertex = theVertices->size();
-   Vertex::Point PV(0,0,0);
-   if( nvertex) PV = theVertices->begin()->position();
-   //Count the nb of offline muons with pt >3
-   //Find the highest pt muon
-   int nmuonspt3 =0; 
-   double leadingmuonpt(-10),leadingmuoneta(-10),leadingmuonphi(-10);
-   for( std::vector<pat::Muon>::const_iterator muon = (*muons).begin(); muon != (*muons).end(); muon++ ) {
-     if(!PassOfflineMuonSelection(&*muon,PV)) continue;
-     double ptmuon = muon->pt();
-     double etamuon = muon->eta();
-     double phimuon = muon->phi();
-     if(ptmuon>=3) nmuonspt3++;
-     if(ptmuon>leadingmuonpt){leadingmuonpt=ptmuon;leadingmuoneta=etamuon;leadingmuonphi=phimuon;}
-   }
-
-
-   
-   //We can now fill some histograms (numerator and denominator to study the efficiency of our favourite path).
+      //We can now fill some histograms (numerator and denominator to study the efficiency of our favourite path).
    //Here we factorize the muon and jet legs and measure their efficiencies separately
     
 
-   //Effcy vs pt of the leading b jet: 
+   /*//Effcy vs pt of the leading b jet: 
    h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_den->Fill(leadingbjetpt);
    if(passHLT_Mu3_PFJet200DeepCSV_1p59) h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_num->Fill(leadingbjetpt);
    if(passHLT_Mu3_L1SingleJet180) h_mu3pfjet200deepcsv1p59_vs_leadbjetpt_numl1->Fill(leadingbjetpt); //For L1 turn on only
@@ -339,11 +451,11 @@ TriggerAnalyzerRAWMiniAOD::analyze(const edm::Event& iEvent, const edm::EventSet
 
    //Effcy vs nb of bjets with pt>200 
    h_mu3pfjet200deepcsv1p59_vs_nbjetspt200_den->Fill(nbjetspt200);
-   if(passHLT_Mu3_PFJet200DeepCSV_1p59) h_mu3pfjet200deepcsv1p59_vs_nbjetspt200_num->Fill(nbjetspt200);
+   if(passHLT_Mu3_PFJet200DeepCSV_1p59) h_mu3pfjet200deepcsv1p59_vs_nbjetspt200_num->Fill(nbjetspt200);*/
 
    //Effcy vs leading muon pt:
-   h_mu3pfjet200deepcsv1p59_vs_leadingmuonpt_den->Fill(leadingmuonpt);
-   if(passHLT_Mu3_PFJet200DeepCSV_1p59) h_mu3pfjet200deepcsv1p59_vs_leadingmuonpt_num->Fill(leadingmuonpt);
+   //h_mu3pfjet200deepcsv1p59_vs_leadingmuonpt_den->Fill(leadingmuonpt);
+   //if(passHLT_Mu3_PFJet200DeepCSV_1p59) h_mu3pfjet200deepcsv1p59_vs_leadingmuonpt_num->Fill(leadingmuonpt);
 
    //Exercise 4: Define the denominator (offline selection) for the histograms filled above and look at the obtained efficiency plots. 
    //For this exercise, you need to run on at least 10k events in order to start to see the jet turn on. 
@@ -365,11 +477,11 @@ TriggerAnalyzerRAWMiniAOD::analyze(const edm::Event& iEvent, const edm::EventSet
 
    //Let's finally see a Tag and Probe example on Z(ee)
    //Offline electrons
-   edm::Handle< std::vector<pat::Electron> > electrons;
+   /*edm::Handle< std::vector<pat::Electron> > electrons;
    iEvent.getByToken(electron_token,electrons );
    //First loop to find a tag electron
    for( std::vector<pat::Electron>::const_iterator tagele = (*electrons).begin(); tagele != (*electrons).end(); tagele++ ) {
-     if(!PassOfflineElectronSelection(&*tagele,PV)) continue;
+     /*if(!PassOfflineElectronSelection(&*tagele,PV)) continue;
      double pttagele = tagele->pt();
      double etatagele = tagele->eta();
      double phitagele = tagele->phi();
@@ -395,7 +507,7 @@ TriggerAnalyzerRAWMiniAOD::analyze(const edm::Event& iEvent, const edm::EventSet
        if(tagele->charge() * probeele->charge()>0)continue;
        h_ele35wptight_lastfilter_den->Fill(ptprobeele);
        if(RecoHLTMatching(iEvent,etaprobeele,phiprobeele,"hltEle35noerWPTightGsfTrackIsoFilter") ) h_ele35wptight_lastfilter_num->Fill(ptprobeele);
-
+    
        
        //Note that everything above is done on miniAOD.
        //If you want to do something similar for a new path, then you need to rerun HLT from RAW (obviously) and modify a bit the RecoHLTMatching function when you retrieve the trigger objects. 
@@ -414,19 +526,19 @@ TriggerAnalyzerRAWMiniAOD::analyze(const edm::Event& iEvent, const edm::EventSet
        bool  dividebyE = false; bool dividebyEt = false; 
        
        //First sietaieta
-       double sietaieta_HLT = VarStudied(iEvent, etaprobeele,phiprobeele,showershape_Var_Token_,et_Filter_Token_ ,dividebyE, dividebyEt);
-       h_sietaieta_HLT->Fill(sietaieta_HLT);
+       //double sietaieta_HLT = VarStudied(iEvent, etaprobeele,phiprobeele,showershape_Var_Token_,et_Filter_Token_ ,dividebyE, dividebyEt);
+       //h_sietaieta_HLT->Fill(sietaieta_HLT);
        //Next: H/E:
        dividebyE = true; dividebyEt = false; //For H/E
-       double hoe_HLT  = VarStudied(iEvent, etaprobeele,phiprobeele,hovere_Var_Token_,showershape_Filter_Token_ ,dividebyE, dividebyEt);
-       h_hoe_HLT->Fill(hoe_HLT);
+       //double hoe_HLT  = VarStudied(iEvent, etaprobeele,phiprobeele,hovere_Var_Token_,showershape_Filter_Token_ ,dividebyE, dividebyEt);
+       //h_hoe_HLT->Fill(hoe_HLT);
        //Finally: trackiso 
        dividebyE =false; dividebyEt = true; //For isolation 
-       double trackiso_HLT  = VarStudied(iEvent, etaprobeele,phiprobeele,trackiso_Var_Token_,dphi_Filter_Token_ ,dividebyE, dividebyEt);
-       h_trackiso_HLT->Fill(trackiso_HLT);
+       //double trackiso_HLT  = VarStudied(iEvent, etaprobeele,phiprobeele,trackiso_Var_Token_,dphi_Filter_Token_ ,dividebyE, dividebyEt);
+       //h_trackiso_HLT->Fill(trackiso_HLT);
 
      }
-   }
+   }*/
 
    //Exercise 6.
    //Rerun the HLT_Ele35_WPTight_Gsf and to run on the SingleElectron dataset. 
@@ -473,6 +585,33 @@ TriggerAnalyzerRAWMiniAOD::fillDescriptions(edm::ConfigurationDescriptions& desc
   edm::ParameterSetDescription desc;
   desc.setUnknown();
   descriptions.addDefault(desc);
+}
+
+
+//____________________________________________________________________________
+void TriggerAnalyzerRAWMiniAOD::bookHists(edm::Service<TFileService>& fs, const std::string& suffix) {
+
+  std::string suf(suffix);
+  if (suffix.size()) suf = "_"+suffix;
+
+  hists_1d_["h_pt"+suf] = fs->make<TH1F>(Form("h_pt%s",suf.c_str()) , "; p_{T} [GeV]" , 100 , 0. , 100. );
+  hists_1d_["h_eta"+suf] = fs->make<TH1F>(Form("h_eta%s",suf.c_str()) , "; #eta" , 100 , -3. , 3. );
+  hists_1d_["h_phi"+suf] = fs->make<TH1F>(Form("h_phi%s",suf.c_str()) , "; #phi" , 100 , -3.14 , 3.14 );
+
+  return;
+}
+
+//____________________________________________________________________________
+void TriggerAnalyzerRAWMiniAOD::fillHists(const LorentzVector& lv, const std::string& suffix) {
+
+  std::string suf(suffix);
+  if (suffix.size()) suf = "_"+suffix;
+
+  hists_1d_["h_pt"+suf]->Fill(lv.pt());
+  hists_1d_["h_eta"+suf]->Fill(lv.eta());
+  hists_1d_["h_phi"+suf]->Fill(lv.phi());
+
+  return;
 }
 
 bool TriggerAnalyzerRAWMiniAOD::PassOfflineMuonSelection(const pat::Muon *mu, reco::Vertex::Point PV){
@@ -571,7 +710,7 @@ bool TriggerAnalyzerRAWMiniAOD::RecoHLTMatching(const edm::Event& iEvent, double
 
 
 
-
+/*
 double TriggerAnalyzerRAWMiniAOD::VarStudied( const edm::Event& iEvent, double recoeta, double recophi,
 					      edm::EDGetTokenT<edm::AssociationMap<edm::OneToValue<std::vector<reco::RecoEcalCandidate>, float > > > varToken_,  edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> candToken_,   bool  dividebyE, bool dividebyEt, double dRmatching ){
 
@@ -611,7 +750,7 @@ double TriggerAnalyzerRAWMiniAOD::VarStudied( const edm::Event& iEvent, double r
     }
   }
   return thevar;
-}
+}*/
 
 
 
