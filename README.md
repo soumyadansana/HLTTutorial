@@ -1,5 +1,6 @@
 # HLTTutorial
 Follow the HLT recipe for running on Summer21 MC https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideGlobalHLT
+NOTE : Follow this recipe on lxplus because the different paths are easier to access. Import the HLT paths files etc in lxplus and then import to T2B cluster.
 ## Setup
 Setup the release, import HLTrigger package, compile
 ```
