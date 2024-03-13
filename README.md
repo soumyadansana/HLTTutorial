@@ -35,7 +35,7 @@ Note : This step needs to be performed in lxplus so that menus are directly acce
 ```
 hltGetConfiguration --cff --offline /dev/CMSSW_12_3_0/GRun --paths HLTriggerFirstPath,HLTriggerFinalPath --mc --eras Run3 --l1-emulator FullMC --l1 l1Menu_Collisions2022_v1_0_0_xml --globaltag auto:phase1_2021_realistic --unprescale > HLT_User_cff.py
 
-ltGetConfiguration /users/sonawane/HLT_V2/HLT_V2_DDMpaths/V14 --cff --mc --globaltag auto:phase1_2021_realistic --unprescale --offline --l1-emulator FullMC --l1 L1Menu_Collisions2022_v1_0_0_xml >> HLT_User_cff.py
+hltGetConfiguration /users/sonawane/HLT_V2/HLT_V2_DDMpaths/V14 --cff --mc --globaltag auto:phase1_2021_realistic --unprescale --offline --l1-emulator FullMC --l1 L1Menu_Collisions2022_v1_0_0_xml >> HLT_User_cff.py
  ```
  You then need to modify HLT_User_cff.py : search for these two lines, they appear twice in the config file. Comment out their second appearance (not the first one). 
  ```
